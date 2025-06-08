@@ -110,5 +110,9 @@ def update_graph(state, city, customer, start_date, end_date):
     return fig
 
 # Run the app
+import os
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 8050))  # Render sets the PORT env var
+    app.run(host='0.0.0.0', port=port, debug=False)
+
