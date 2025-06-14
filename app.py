@@ -1,118 +1,114 @@
-import pandas as pd
-import dash
-from dash import dcc, html, Input, Output
+# app.py
+import os, pandas as pd
+import dash, sqlite3
+from dash import dcc, html, Input, Output, State
 import plotly.express as px
+from flask import Flask
 
-# Load the data
-df = pd.read_csv("erp_sales_data.csv")
+# 1) Combine Flask + Dash
+server = Flask(__name__)
+app = dash.Dash(__name__, server=server)
+API_PORT = 5050  # matches erp_salesdatagen.py
 
-# Convert Invoice_Date column to datetime
-df['Invoice_Date'] = pd.to_datetime(df['Invoice_Date'], errors='coerce')
-
-# Initialize the app
-app = dash.Dash(__name__)
-app.title = "ERP Sales Drill-Down Dashboard"
-
-# App layout
+# 2) Layout, including upload
 app.layout = html.Div([
-    html.H1("ERP Sales Dashboard", style={'textAlign': 'center'}),
+    html.H1("ERP Sales Dashboard"),
 
-    html.Div([
-        html.Label("Select State"),
-        dcc.Dropdown(
-            id='state-dropdown',
-            options=[{'label': s, 'value': s} for s in df['state_name'].dropna().unique()],
-            placeholder="Select a state"
-        ),
-    ], style={'width': '20%', 'display': 'inline-block'}),
+    # File upload
+    dcc.Upload(
+      id='upload-csv',
+      children=html.Button("Upload CSV"),
+      multiple=False
+    ),
+    html.Div(id='upload-status'),
 
-    html.Div([
-        html.Label("Select City"),
-        dcc.Dropdown(id='city-dropdown'),
-    ], style={'width': '20%', 'display': 'inline-block'}),
+    # Filters
+    dcc.Dropdown(id='state-dd', placeholder='State'),
+    dcc.Dropdown(id='city-dd', placeholder='City'),
+    dcc.Dropdown(id='cust-dd', placeholder='Customer'),
+    dcc.DatePickerRange(id='date-picker',
 
-    html.Div([
-        html.Label("Select Customer"),
-        dcc.Dropdown(id='customer-dropdown'),
-    ], style={'width': '20%', 'display': 'inline-block'}),
+        start_date_placeholder_text='From date',
+        end_date_placeholder_text='To date'
+    ),
 
-    html.Div([
-        html.Label("Select Date Range"),
-        dcc.DatePickerRange(
-            id='date-picker',
-            min_date_allowed=df['Invoice_Date'].min(),
-            max_date_allowed=df['Invoice_Date'].max(),
-            start_date=df['Invoice_Date'].min(),
-            end_date=df['Invoice_Date'].max()
-        )
-    ], style={'width': '35%', 'display': 'inline-block', 'marginLeft': '2%'}),
-
-    html.Br(), html.Br(),
-
+    # Chart
     dcc.Graph(id='sales-graph')
 ])
 
-# Callback to update City based on State
+# 3) Upload callback → POST to your erp_salesdatagen API
 @app.callback(
-    Output('city-dropdown', 'options'),
-    Input('state-dropdown', 'value')
+  Output('upload-status','children'),
+  Input('upload-csv','contents'),
+  State('upload-csv','filename')
 )
-def update_city_dropdown(selected_state):
-    if selected_state:
-        filtered_df = df[df['state_name'] == selected_state]
-        return [{'label': c, 'value': c} for c in filtered_df['city_name'].dropna().unique()]
-    return []
+def upload(contents, filename):
+    if not contents:
+        return ""
+    import requests, base64
+    # Extract raw bytes
+    b64 = contents.split(',')[1]
+    data = base64.b64decode(b64)
+    # Send to local API
+    r = requests.post(f"http://localhost:{API_PORT}/upload", files={'file':(filename,data)})
+    return f"Upload status: {r.json().get('status')}"
 
-# Callback to update Customer based on City
+# 4) Whenever filters change, re‐gen CSV & reload the DF
+def load_df(filters):
+    # Build API call to gen_csv
+    params = {k:v for k,v in filters.items() if v}
+    import requests
+    requests.get(f"http://localhost:{API_PORT}/gen_csv", params=params)
+    return pd.read_csv('erp_sales_data.csv', parse_dates=['invoice_date'])
+
 @app.callback(
-    Output('customer-dropdown', 'options'),
-    Input('city-dropdown', 'value'),
-    Input('state-dropdown', 'value')
+  Output('state-dd','options'),
+  Input('upload-status','children')
 )
-def update_customer_dropdown(selected_city, selected_state):
-    if selected_city and selected_state:
-        filtered_df = df[(df['state_name'] == selected_state) & (df['city_name'] == selected_city)]
-        return [{'label': c, 'value': c} for c in filtered_df['Party_Name'].dropna().unique()]
-    return []
+def init_states(_):
+    df = pd.read_csv('erp_sales_data.csv')
+    return [{'label':s,'value':s} for s in df['state_name'].unique()]
 
-# Callback to update Graph
 @app.callback(
-    Output('sales-graph', 'figure'),
-    Input('state-dropdown', 'value'),
-    Input('city-dropdown', 'value'),
-    Input('customer-dropdown', 'value'),
-    Input('date-picker', 'start_date'),
-    Input('date-picker', 'end_date')
+  Output('city-dd','options'),
+  Input('state-dd','value'),
+  Input('upload-status','children')
 )
-def update_graph(state, city, customer, start_date, end_date):
-    filtered_df = df.copy()
+def update_cities(state,_):
+    df = pd.read_csv('erp_sales_data.csv')
+    return [{'label':c,'value':c} for c in df[df['state_name']==state]['city_name'].unique()]
 
-    if state:
-        filtered_df = filtered_df[filtered_df['state_name'] == state]
-    if city:
-        filtered_df = filtered_df[filtered_df['city_name'] == city]
-    if customer:
-        filtered_df = filtered_df[filtered_df['Party_Name'] == customer]
+@app.callback(
+  Output('cust-dd','options'),
+  Input('state-dd','value'), Input('city-dd','value'),
+  Input('upload-status','children')
+)
+def update_customers(s,c,_):
+    df = pd.read_csv('erp_sales_data.csv')
+    df = df[(df['state_name']==s)&(df['city_name']==c)]
+    return [{'label':p,'value':p} for p in df['Party_Name'].unique()]
 
-    if start_date and end_date:
-        filtered_df = filtered_df[(filtered_df['Invoice_Date'] >= start_date) & (filtered_df['Invoice_Date'] <= end_date)]
-
-    # Group by date and sum invoice values
-    grouped = filtered_df.groupby('Invoice_Date')['invoice_value'].sum().reset_index()
-
-    fig = px.bar(
-        grouped,
-        x='Invoice_Date',
-        y='invoice_value',
-        title='Sales Over Time',
-        labels={'invoice_value': 'Total Sales', 'Invoice_Date': 'Date'}
-    )
-    return fig
-
-# Run the app
-import os
+@app.callback(
+  Output('sales-graph','figure'),
+  Input('state-dd','value'),
+  Input('city-dd','value'),
+  Input('cust-dd','value'),
+  Input('date-picker','start_date'),
+  Input('date-picker','end_date')
+)
+def draw_graph(s,c,p,fd,td):
+    df = load_df({
+      't_code':None,       # you can add controls
+      'location_code':None,
+      'from_date':fd, 'to_date':td,
+      'state_name':s, 'city_name':c, 'customer':p
+    })
+    if df.empty:
+        return px.line(title="No data")
+    return px.bar(df.groupby('item_name')['invoice_value'].sum().reset_index(),
+                  x='item_name', y='invoice_value',
+                  title="Sales by Item")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8050))  # Render sets the PORT env var
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run_server(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8050)))
 
