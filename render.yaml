@@ -1,10 +1,20 @@
 services:
   - type: web
-    name: erp-sales-dashboard
+    name: dash-app
     env: python
-    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python app.py
+    plan: free
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10
+      - key: PORT
+        value: 10000  # you can set 8050 or let Render choose
+
+  - type: web
+    name: flask-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python erp_salesdatagen.py
+    plan: free
+    envVars:
+      - key: PORT
+        value: 10001  
