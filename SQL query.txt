@@ -1,0 +1,171 @@
+select
+
+state_name,
+
+city_name,
+
+Party_Name,
+
+party_address,
+
+Party_Gstn_No,
+
+item_name,
+
+sum(sale_qty) qty,
+
+sum(Taxable_Value) Taxable_Value,
+
+sum(cgst_amount) cgst_amount,
+
+sum(sgst_amount) sgst_amount,
+
+sum(igst_amount) igst_amount,
+
+sum(TCS_Amount) tcs_amount,
+
+sum(Total_Amount) invoice_value
+
+from
+
+(
+
+SELECT  
+
+(select state_state_name from cor_state_m where state_state_code=a.party_state_code and t_code=m.t_code) state_name,
+
+j.city_city_name city_name ,b.party_gstn_no AS Party_Gstn_No,
+
+               a.party_party_name AS Party_Name,
+
+a.party_addr_ln1 || a.party_addr_ln2 || a.party_addr_ln3 party_address,
+
+               get_fin_year_4_digit_new(m.sale_doc_dt, m.t_code) || SUBSTR (m.sale_doc_#, 9, 10) AS Invoice_Number,
+
+               TO_CHAR (TO_DATE (m.sale_doc_dt, 'DD-MON-YY'), 'DD-MON-YYYY') AS Invoice_Date,to_char(m.sale_doc_dt,'MON/YYYY') Month,to_char(m.sale_doc_dt,'mmyyyy') mm,
+
+               m.sale_gross_amt AS Invoice_Value,
+
+               generate_party_state_code_new(m.sale_prty_code, m.t_code) || '-' || generate_party_state_name_new (m.sale_prty_code, m.t_code) AS Place_of_Supply,d.sale_item_code sale_item,s.item_item_name item_name,
+
+generate_unit_name(d.sale_item_code,m.t_code) uom,
+
+sum(nvl(d.sale_item_qty,0)+nvl(sale_free_qty,0)) sale_qty,
+
+MAX (NVL (cgst_per, 0)) + MAX (NVL (sgst_per, 0)) + MAX (NVL (igst_per, 0)) AS gst_Rate,
+
+               ROUND (sum(nvl(d.SALE_ITEM_NETAMT,0))-(sum(nvl(d.CGST_AMNT,0))+sum(nvl(d.SGST_AMNT,0))+sum(nvl(d.IGST_AMNT,0))+sum(nvl(d.sale_tcs_amt,0))),2) AS Taxable_Value,
+
+               sum(d.CGST_AMNT) CGST_Amount,sum(d.SGST_AMNT) SGST_Amount,sum(d.IGST_AMNT) IGST_Amount,
+
+sum(nvl(d.sale_tcs_amt,0)) TCS_Amount,
+
+               sum(d.SALE_ITEM_NETAMT) Total_Amount,(select DOC_DOC_DESC from COR_DOC_M where DOC_TYPE||DOC_SUB_TYPE=m.SALE_DOC_TYPE and T_CODE=m.T_CODE) Sale_Type
+
+          FROM mkg_sale_m m,
+
+               mkg_sale_d d,
+
+               cor_party_m a,
+
+               cor_party_sb b,
+
+               cor_locn_addr c,
+
+               str_item_m s,
+
+               cor_city_m j
+
+         WHERE m.sale_locn_code = d.sale_locn_code
+
+           AND m.sale_doc_# = d.sale_doc_#
+
+           and d.sale_item_code=s.item_item_code
+
+           AND m.sale_doc_type = d.sale_doc_type
+
+           and a.party_addr_town=j.city_city_code
+
+           AND m.sale_doc_type like( '34%')
+
+           AND NVL (m.sale_cancel_flag, 'N') = 'N'
+
+           AND m.sale_prty_code = a.party_party_code
+
+           AND a.party_party_code = b.party_party_code(+)
+
+           AND m.sale_locn_code = c.locn_locn_code(+)
+
+           AND m.sale_locn_code = '100001'--plocationcode
+
+           AND (TRUNC (m.sale_doc_dt) BETWEEN '01-Apr-2020' AND '30-Apr-2024')
+
+           --AND a.party_party_code = NVL (pparty_code, a.party_party_code)
+
+           AND m.t_code = d.t_code
+
+           AND m.t_code = a.t_code
+
+           AND m.t_code = b.t_code
+
+           AND m.t_code = c.t_code
+
+           and m.t_code=s.t_code
+
+           and m.t_code=j.t_code
+
+           and a.t_code=j.t_code
+
+           AND m.t_code = '0'
+
+              GROUP BY
+
+a.party_state_code,
+
+j.city_city_name,
+
+               b.party_gstn_no,
+
+               m.sale_prty_code,
+
+               m.sale_dest_code,
+
+               a.party_addr_ln1 || a.party_addr_ln2 || a.party_addr_ln3,
+
+               a.party_party_name,
+
+               m.sale_doc_type,
+
+               m.sale_doc_#,
+
+               m.sale_doc_dt,
+
+               sale_gross_amt,
+
+               m.sale_fac_effect,
+
+               m.sale_doc_type,
+
+               m.t_code,
+
+               a.party_reg_flg,
+
+               d.sale_item_code,
+
+               s.item_item_name
+
+)
+
+group by state_name,
+
+city_name,
+
+Party_Name,
+
+party_address,
+
+Party_Gstn_No,
+
+item_name
+
+order by Party_Name

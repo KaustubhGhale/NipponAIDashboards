@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.xlsx
+*.pdf
+.venv/
+.env
+data/erp_sales_data.csv

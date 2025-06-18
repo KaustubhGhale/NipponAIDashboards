@@ -1,0 +1,11 @@
+dash
+flask
+pandas
+numpy
+gunicorn
+plotly
+sqlalchemy
+oracledb
+openpyxl
+kaleido
+dash-bootstrap-components
