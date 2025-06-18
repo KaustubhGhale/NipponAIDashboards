@@ -2,6 +2,10 @@
 import pandas as pd
 from sqlalchemy import create_engine
 import os
+import oracledb
+oracledb.init_oracle_client(lib_dir="D:\\oracle\\instantclient_21_11")
+os.environ["PATH"] = "C:\\oracle\\instantclient_21_11;" + os.environ.get("PATH", "")
+os.environ["TNS_ADMIN"] = "C:\\oracle\\instantclient_21_11"
 
 # === Configuration ===
 DB_USER = 'NEWTON_ERP'
